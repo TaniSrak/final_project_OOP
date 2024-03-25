@@ -3,6 +3,7 @@
 #include <random>
 #include <string>
 
+
 using namespace std;
 
 class BigInteger //создаем свой тип данных
@@ -12,7 +13,7 @@ private:
 	std::string value = "0"; //делаем строковый массив для больших чисел
 
 	//умножение
-	BigInteger KaratsubaMultiply(const BigInteger &a, const BigInteger &b)
+	BigInteger KaratsubaMultiply(const BigInteger &a, const BigInteger &b) const
 	{
 		string val1 = a.GetValue();
 		string val2 = b.GetValue();
@@ -38,6 +39,9 @@ private:
 		BigInteger P1 = KaratsubaMultiply(Xl, Yl);
 		BigInteger P2 = KaratsubaMultiply(Xr, Yr);
 		BigInteger P3 = KaratsubaMultiply(Xr + Xl, Yr + Yl);
+
+		//вернуть результирующее число со сдвигами
+		return (P1 << len) + ((P3 - P2 - P1) << n) + P2;
 	}
 
 public:
@@ -46,11 +50,31 @@ public:
 		return value;
 	}
 
-	bool GetNegative()
+	bool GetNegative() const
 	{
 		return isNegative;
 	}
-
+	//возводим число в степени n
+	BigInteger Pow(long n) const
+	{
+		if (!n)
+		{
+			return 1;
+		}
+		//0101
+		//0001
+		//0000
+		//оч хитрая системая возведения в степень, необходимо изучить
+		if (n & 1) //оператор адреса переменной, проерка на четнотсь
+		{
+			return Pow(n - 1) * *this; //возводим в степень нечетные, зачем-то минусуем 1, потом умножаем
+		}
+		else
+		{
+			BigInteger tmp = Pow(n / 2); //четные зачем-то делим, потом умножаем
+			return tmp * tmp;
+		}
+	}
 
 	BigInteger(long x)
 	{
@@ -200,9 +224,297 @@ public:
 		return BigInteger(string(isNegative ? "-" : "") + value.substr(0, value.length() - n));  //срез числа на н элементов
 	}
 
+	//бинарный минус
+	BigInteger operator - (const BigInteger& x) const
+	{
+		if (*this == x) //если числа одинаковые
+		{
+			return 0;
+		}
+		if (!isNegative && !x.isNegative) //если оба числа положительные, то мы вычитаем
+		{
+			string value2 = x.GetValue();
+
+			int len1 = value.length();
+			int len2 = value2.length();
+
+			int len = max(len1, len2);
+
+			bool isNegativeResult = x > *this;
+			int *a= new int [len], *b= new int[len]; //делаем массив 
+
+			a[0] = b[0] = 0;
+
+			char* result = new char[len + 1];
+			result[len - 1] = result[len] = '\0';
+
+			int sing = (1 * isNegative - 1); //из була в числовое значение
+
+			for (int i = 0; i < len - 1; i++) //проходимся по индексам
+			{
+				a[i] += (i < len1) ? (value[len1 - 1 - i] - '0') : 0;
+				b[i] += (i < len2) ? (value2[len2 - 1 - i] - '0') : 0;
+
+				b[i + 1] = -isNegativeResult;
+				a[i + 1] = isNegativeResult - 1;
+
+				result[len - 1 - i] += 10 + sing * (b[i] - a[i]); //вычитаем само число
+				result[len - 1 - i - 1] = result[len - 1 - i] / 10; //занимаем десятку
+				result[len - 1 - i] = result[len - 1 - i] % 10 + '0'; //преобразование в число
+
+			}
+			a[len - 1] += (len - 1 < len1) * (value[0] - '0');
+			b[len - 1] += (len - 1 < len2) * (value[0] - '0');
+				//полученное значение записываем в результат
+			result[0] += sing * (b[len - 1] - a[len - 1]) + '0';
+			//преобразуем все в наш тип данных, при условии что все знаки одинаоквые
+			BigInteger res = BigInteger(isNegativeResult ? string("-") + string(result) : string(result));
+
+			delete[] a;
+			delete[] b;
+			delete[] result;
+
+			return res;
+		}
+		else
+		{
+			//возвращаем все с разными (просто сложив) и минусовыми знаками(предварительно поменяв местами и перевернув знаки)
+			return isNegative && x.isNegative ? (-BigInteger(x) - (-BigInteger(*this))) : (*this + -BigInteger(x));
+		}
+	}
+
+	//бинарное умножение
+	BigInteger operator*(const BigInteger& x) const
+	{
+		if (value == "0" || x.GetValue() == "0")//если хотя бы 1 число равно 0
+		{
+			return 0;
+		}
+
+		string value2 = x.GetValue();
+
+		int len1 = value.length();
+		int len2 = value2.length();
+		int len = len1 + len2 + 1;
+
+		bool isNegativeResult = isNegative ^ x.isNegative; //ксор для кмножений между собой плюсов и минусов
+
+		if (len < 10) //если результирующая длина двух чисел меньше 10
+		{
+			long res = stol(value) * stol(value2);
+			return BigInteger(isNegativeResult ? -res : res);
+		}
+		else
+		{
+			BigInteger result = KaratsubaMultiply(*this, x);
+			return isNegativeResult ? -BigInteger(result) : result; //результирующее число
+		}
+	}
+
+	//бинарное деление
+	BigInteger operator/(const BigInteger& x) const
+	{
+		string value1 = value;
+		string value2 = x.GetValue();
+
+		if (value2[0] != '0') // не даем делить на 0
+		{
+			if (value[0] == '0') //но непосредственно сам 0 даем делить
+			{
+				return 0;
+			}
+			//равняет ли второе значение 1
+			if (value2 == "1")
+			{
+				return BigInteger(x.isNegative ? -BigInteger(*this) : *this);
+			}
+			//проверка ноликов в числе
+			int zeroCount = 0;
+			while (value[value2.length() - 1 - zeroCount] == '0')
+			{
+				zeroCount++;
+			}
+			if (zeroCount >= value.length())
+			{
+				return 0;
+			}
+
+			//прощай круглые числа с нулями в конце
+			if (zeroCount)
+			{
+				value1 = value1.substr(0, value.length() - zeroCount);
+				value2 = value2.substr(0, value.length() - zeroCount);
+			}
+			//определяем знак числа
+			bool isNegativeResult = isNegative ^ x.isNegative;
+
+			BigInteger tmp(value2);
+
+			int divLength = value1.length(); //длина делителя
+			long divV = divLength > 8 ? 0 : atol(value2.c_str()); //преобразовывем делитель
+
+			int length = value.length();//длина делимого
+			int index = 0;
+
+			string divResult;
+			string divTmp;
+
+
+			while (BigInteger(divTmp) < tmp && index < length)
+			{
+				divTmp += value1[index++];
+			}
+			do
+			{
+				int count = 0;
+				if (BigInteger(divTmp) >= tmp) //проверка второго числа что оно меньше или ровно делителя
+				{
+					if (divLength > 8) //помещается ли наше чисо в 8
+					{
+						BigInteger mod = divTmp;
+						while (mod >= tmp)
+						{
+							mod -= tmp;
+							count++;
+						}
+						divTmp = mod.GetValue();
+					}
+					else
+					{
+						long mod = stol(divTmp); //записываем результат
+						count = mod / divV;
+						divTmp = to_string(mod % divV);
+					}
+				}
+				divResult += count + '0'; //проверка индекса, меньше ли он длины числа
+				if (index <= length)
+				{
+					divTmp += value[index++];
+				}
+			} while (index <= length);
+			return BigInteger(isNegativeResult && divResult != "0" ? string("-") + divResult : divResult);
+		}
+		//по хорошему кинуть ошибку
+	}
+
+	//бинарный процент
+	BigInteger operator%(const BigInteger x) const
+	{
+		string value2 = x.GetValue();
+
+		if (value[0] == '0')
+		{
+			//ошибка деленя на 0
+		}
+
+		if (value[0] == '0' || value2 == "1")
+		{
+			return 0;
+		}
+
+		if (value.length() < 9 || value2.length() < 9)
+		{
+			long res = stol(value) % stol(value2);
+			return isNegative ? -res : res;
+		}
+
+		BigInteger tmp(value2);
+		int divLen = value2.length();
+		long divV = divLen >= 9 ? 0 : atol(value2.c_str());
+		int len = value.length();
+		int index = 0;
+
+		BigInteger mod = value;
+		string v;
+
+		while (BigInteger(v) < tmp && index < len)
+		{
+			v += value[index++];
+		}
+		do
+		{
+			if (BigInteger(v) >= tmp)
+			{
+				if (divV)
+				{
+					v = to_string(stol(v) % divV);
+				}
+				else
+				{
+					BigInteger mod2 = v;
+					while (mod2 >= tmp)
+					{
+						mod2 -= tmp;
+					}
+					v = mod2.GetValue();
+				}
+			}
+			if (index <= len)
+			{
+				mod = v;
+				v += value[index++];
+			}
+		}
+		while (index <= len);
+
+		if (mod.GetValue() == "0")
+		{
+			return 0;
+		}
+		return isNegative ? -BigInteger(mod) : mod;
+	}
+
+	//бинарный +=
+	BigInteger operator += (const BigInteger& x)
+	{
+		return *this = *this + x;
+	}
+
+	//бинарный -=
+	BigInteger operator -= (const BigInteger& x)
+	{
+		return *this = *this - x;
+	}
+
+	//бинарное *=
+	BigInteger operator -= (const BigInteger& x)
+	{
+		return *this = *this * x;
+	}
+
+	//бинарное /=
+	BigInteger operator /= (const BigInteger& x)
+	{
+		return *this = *this / x;
+	}
+
+	//бинарный %=
+	BigInteger operator %= (const BigInteger& x)
+	{
+		return *this = *this % x;
+	}
 
 };
 
+//вывод числа в выходной поток
+ostream &operator <<(ostream& stream, const BigInteger &x)
+{
+	if (x.GetNegative())
+	{
+		stream << "-";
+	}
+	return stream << x.GetValue();
+}
+
+//ввод числа из входного потока
+istream& operator >> (istream& stream,  BigInteger& x)
+{
+	string value;
+	stream >> value;
+	x = BigInteger(value);
+
+	return stream;
+}
 
 class SieveOfEratoshenes //решето добываем простое число
 {
